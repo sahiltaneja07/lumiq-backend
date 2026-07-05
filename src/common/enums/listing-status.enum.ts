@@ -1,0 +1,7 @@
+export enum ListingStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  PAUSED = 'PAUSED',
+  UNPUBLISHED = 'UNPUBLISHED',
+  DELETED = 'DELETED',
+}

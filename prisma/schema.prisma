@@ -1,0 +1,514 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  DRIVER
+  HOST
+  SUPPORT
+}
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+  GARAGE
+  FARM
+  BUSINESS
+  OFFICE
+  OTHER
+}
+
+enum ParkingType {
+  DRIVEWAY
+  GARAGE
+  CARPORT
+  STREET
+  PARKING_LOT
+}
+
+enum VehicleSize {
+  COMPACT
+  SEDAN
+  SUV
+  TRUCK
+  VAN
+  ALL
+}
+
+enum AccessibilityType {
+  PUBLIC
+  RESTRICTED
+  KEY_REQUIRED
+  HOST_ASSISTED
+}
+
+enum ConnectorType {
+  TYPE1
+  TYPE2
+  CCS1
+  CCS2
+  CHADEMO
+  NACS
+  WALL_OUTLET
+}
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  UNPUBLISHED
+  DELETED
+}
+
+enum BookingStatus {
+  UPCOMING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  EXPIRED
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  REMINDER
+  PAYMENT
+  CANCELLATION
+  REVIEW_REMINDER
+  CHAT_MESSAGE
+  SYSTEM
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String?        // nullable for OAuth users
+  roles          Role[]         @default([DRIVER])
+  isEmailVerified Boolean        @default(false)
+  failedAttempts Int            @default(0)
+  lockoutUntil   DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  profile        UserProfile?
+  refreshTokens  RefreshToken[]
+  vehicles       Vehicle[]
+  hostProfile    HostProfile?
+  bookings       Booking[]
+  favorites      Favorite[]
+  messagesSent   Message[]      @relation("SentMessages")
+  notifications  Notification[]
+  auditLogs      AuditLog[]     @relation("UserAudits")
+  createdAudits  AuditLog[]     @relation("CreatorAudits")
+
+  @@index([email])
+}
+
+model UserProfile {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  firstName   String
+  lastName    String
+  phoneNumber String?
+  avatarUrl   String?
+  bio         String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Vehicle {
+  id              String         @id @default(uuid())
+  userId          String
+  nickname        String
+  manufacturer    String
+  model           String
+  year            Int
+  color           String
+  batteryCapacity Decimal        @db.Decimal(5, 2) // kWh, e.g., 999.99
+  connectorType   ConnectorType
+  isDefault       Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos          VehiclePhoto[]
+  bookings        Booking[]
+
+  @@index([userId])
+}
+
+model VehiclePhoto {
+  id        String   @id @default(uuid())
+  vehicleId String
+  url       String
+  category  String   // 'front' | 'rear' | 'side' | 'other'
+  createdAt DateTime @default(now())
+
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+model HostProfile {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  verified     Boolean   @default(false)
+  rating       Decimal   @default(0.00) @db.Decimal(3, 2)
+  reviewCount  Int       @default(0)
+  responseRate Decimal   @default(100.00) @db.Decimal(5, 2) // e.g. 100.00%
+  memberSince  DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  // Relations
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listings     Listing[]
+}
+
+model Listing {
+  id                 String               @id @default(uuid())
+  hostProfileId      String
+  propertyName       String
+  description        String
+  propertyType       PropertyType
+  parkingType        ParkingType
+  vehicleSize        VehicleSize          @default(ALL)
+  accessibility      AccessibilityType    @default(PUBLIC)
+  numberOfSpaces     Int                  @default(1)
+  status             ListingStatus        @default(DRAFT)
+  qualityScore       Decimal              @default(0.00) @db.Decimal(5, 2) // 0 - 100
+  completionPercent  Int                  @default(0)
+  rating             Decimal              @default(0.00) @db.Decimal(3, 2)
+  reviewCount        Int                  @default(0)
+  
+  // Location
+  address            String
+  latitude           Decimal              @db.Decimal(10, 8)
+  longitude          Decimal              @db.Decimal(11, 8)
+
+  // Charger Specs
+  brand              String
+  connector          ConnectorType
+  speed              Decimal              @db.Decimal(5, 2) // kW, e.g. 22.00
+  power              Decimal              @db.Decimal(5, 2) // Amps, e.g. 32.00
+  cableLength        Decimal?             @db.Decimal(4, 2) // Meters, e.g. 5.50
+  isSmartCharger     Boolean              @default(false)
+  rules              String?
+
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+  createdBy          String?
+  updatedBy          String?
+
+  // Relations
+  hostProfile        HostProfile          @relation(fields: [hostProfileId], references: [id], onDelete: Cascade)
+  photos             ListingPhoto[]
+  amenities          ListingAmenity[]
+  nearbyTags         ListingNearbyTag[]
+  availabilities     ListingAvailability[]
+  pricings           ListingPricing[]
+  arrivalInstruction ArrivalInstruction?
+  bookings           Booking[]
+  favorites          Favorite[]
+  reviews            Review[]
+
+  @@index([hostProfileId])
+  @@index([latitude, longitude])
+}
+
+model ListingPhoto {
+  id        String   @id @default(uuid())
+  listingId String
+  url       String
+  category  String   // 'charger' | 'connector' | 'cable' | 'parking' | 'driveway' | 'garage' | 'entrance' | 'street' | 'exterior'
+  createdAt DateTime @default(now())
+
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model Amenity {
+  id          String           @id @default(uuid())
+  name        String           @unique // e.g. WiFi, CCTV, Lighting, Toilet, Wheelchair, Water, Waiting Area, Covered Parking
+  createdAt   DateTime         @default(now())
+  listings    ListingAmenity[]
+}
+
+model ListingAmenity {
+  listingId String
+  amenityId String
+
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  amenity   Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([listingId, amenityId])
+}
+
+model NearbyTag {
+  id          String             @id @default(uuid())
+  name        String             @unique // e.g. Cafe, Gym, ATM, Park, Supermarket, Bus Stop, shopping_center
+  createdAt   DateTime           @default(now())
+  listings    ListingNearbyTag[]
+}
+
+model ListingNearbyTag {
+  listingId   String
+  nearbyTagId String
+
+  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  nearbyTag   NearbyTag @relation(fields: [nearbyTagId], references: [id], onDelete: Cascade)
+
+  @@id([listingId, nearbyTagId])
+}
+
+model ListingAvailability {
+  id             String    @id @default(uuid())
+  listingId      String
+  dayOfWeek      Int       @default(0) // 0 = Sunday, 1 = Monday, etc.
+  startTime      String    // "08:00"
+  endTime        String    // "22:00"
+  unavailableFrom DateTime?
+  unavailableTo  DateTime?
+  recurring      Boolean   @default(true)
+  timezone       String    @default("UTC")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  listing        Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model ListingPricing {
+  id             String    @id @default(uuid())
+  listingId      String
+  hourlyRate     Decimal   @db.Decimal(10, 2)
+  minBookingHrs  Decimal   @default(1.00) @db.Decimal(4, 2)
+  maxBookingHrs  Decimal?  @db.Decimal(5, 2)
+  weekendRate    Decimal?  @db.Decimal(10, 2)
+  holidayRate    Decimal?  @db.Decimal(10, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  listing        Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model ArrivalInstruction {
+  id                  String   @id @default(uuid())
+  listingId           String   @unique
+  parkingInstructions String
+  gateCode            String?
+  houseRules          String?
+  emergencyContact    String
+  additionalNotes     String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  listing             Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model Booking {
+  id               String        @id @default(uuid())
+  listingId        String
+  driverId         String
+  vehicleId        String
+  startTime        DateTime
+  endTime          DateTime
+  durationHours    Decimal       @db.Decimal(5, 2)
+  
+  // Pricing Breakdown
+  basePrice        Decimal       @db.Decimal(10, 2)
+  taxes            Decimal       @db.Decimal(10, 2)
+  platformFee      Decimal       @db.Decimal(10, 2)
+  discount         Decimal       @default(0.00) @db.Decimal(10, 2)
+  totalPrice       Decimal       @db.Decimal(10, 2)
+
+  status           BookingStatus @default(UPCOMING)
+  qrCode           String?       // base64 or url representation
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?
+  updatedBy        String?
+
+  // Relations
+  listing          Listing       @relation(fields: [listingId], references: [id])
+  driver           User          @relation(fields: [driverId], references: [id])
+  vehicle          Vehicle       @relation(fields: [vehicleId], references: [id])
+  payments         Payment[]
+  reviews          Review[]
+  conversations    Conversation[]
+
+  @@index([listingId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([startTime, endTime])
+}
+
+model Payment {
+  id               String    @id @default(uuid())
+  bookingId        String
+  paymentIntentId  String    @unique
+  amount           Decimal   @db.Decimal(10, 2)
+  currency         String    @default("usd")
+  status           String    // 'succeeded' | 'pending' | 'failed' | 'refunded'
+  receiptUrl       String?
+  invoiceUrl       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  booking          Booking   @relation(fields: [bookingId], references: [id])
+  refunds          Refund[]
+
+  @@index([bookingId])
+}
+
+model Refund {
+  id               String    @id @default(uuid())
+  paymentId        String
+  refundId         String    @unique // Stripe refund id
+  amount           Decimal   @db.Decimal(10, 2)
+  reason           String?
+  status           String    // 'succeeded' | 'pending' | 'failed'
+  createdAt        DateTime  @default(now())
+
+  payment          Payment   @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+}
+
+model Review {
+  id          String        @id @default(uuid())
+  listingId   String
+  bookingId   String
+  rating      Int           // 1 to 5 stars
+  comment     String
+  hostReply   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  listing     Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  photos      ReviewPhoto[]
+
+  @@index([listingId])
+  @@index([bookingId])
+}
+
+model ReviewPhoto {
+  id        String   @id @default(uuid())
+  reviewId  String
+  url       String
+  createdAt DateTime @default(now())
+
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model Favorite {
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@id([userId, listingId])
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  bookingId String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  booking   Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  messages  Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  imageUrl       String?
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?            // additional payload
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String   // e.g., 'USER_LOGIN', 'LISTING_CREATE'
+  entityName String   // e.g., 'User', 'Listing'
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  userId     String?  // The user who performed the action
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  createdById String?
+
+  user       User?    @relation("UserAudits", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy  User?    @relation("CreatorAudits", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String?
+  isEnabled   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
