@@ -21,6 +21,10 @@ import {
 import { validate } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
 import { LoggingModule } from './logging/logging.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -55,14 +59,31 @@ import { LoggingModule } from './logging/logging.module';
 
     // Global Structured Logging
     LoggingModule,
+
+    // Feature Modules — Phase 1
+    AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+
     // Global Throttling Guard
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+
+    // Global JWT Auth Guard — all routes protected by default; use @Public() to bypass
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+
+    // Global Roles Guard — enforces @Roles() decorators
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

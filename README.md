@@ -1,98 +1,110 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Lumiq EV Charging Marketplace Backend (Phase 1)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Lumiq is an Airbnb-like premium marketplace where homeowners (hosts) rent out private EV chargers to drivers.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+This repository implements **Phase 1: Project Foundation & Authentication System**.
 
-## Description
+## Stack
+- **Framework:** NestJS (v11)
+- **Language:** TypeScript
+- **ORM:** Prisma ORM
+- **Database:** PostgreSQL
+- **Security:** Passport, JWT, bcrypt
+- **Documentation:** Swagger (OpenAPI)
+- **Logging:** Winston
+- **Validation:** class-validator, class-transformer
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Clean Architecture & Design Patterns
+The project follows **Clean Architecture** principles and the **Repository Pattern** to decouple database queries from business rules:
+1. **Controller Layer:** Parses, validates requests (DTOs), and returns structured JSON responses.
+2. **Service Layer (Domain Logic):** Coordinates transactional steps, security operations, hashing, and token validation.
+3. **Repository Layer:** Encapsulates raw database operations using Prisma.
+4. **Data Transfer Objects (DTO):** Strict validation of incoming and outgoing data, removing sensitive fields (`passwordHash`, `failedAttempts`) before sending responses to the client.
 
+---
+
+## Authentication & Security Design
+- **Password Strength:** Enforces strong password rules (uppercase, lowercase, numbers, and special symbols).
+- **Dual Token JWT auth:**
+  - `Access Token` (short-lived, 15m): Attached as `Bearer` header for authenticating requests.
+  - `Refresh Token` (long-lived, 7d): Sent as HTTP body parameter to retrieve new access tokens.
+- **Token Rotation & Database Revocation:** Each refresh token is hashed (SHA-256) and stored in the database. When a refresh token is reused or rotated, the previous record is revoked.
+- **Account Lockout:** Locks accounts for 15 minutes after 5 consecutive failed login attempts (preventing brute-force attacks).
+- **Verification & Resets:** Structured to store temporary verification/reset tokens inside a Redis store (TTL-bound).
+
+---
+
+## Setup & Running the Application
+
+### 1. Install Dependencies
 ```bash
-$ npm install
+npm install
 ```
 
-## Compile and run the project
-
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env` and fill in the parameters:
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
+```
+Ensure `DATABASE_URL` is set correctly:
+```env
+DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/lumiq?schema=public"
 ```
 
-## Run tests
-
+### 3. Generate Prisma Client & Migrations
+Once your PostgreSQL database is running, generate the Prisma client and apply the migrations:
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npx prisma generate
+npx prisma migrate dev --name init
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### 4. Running the Dev Server
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
 ```
+- **REST APIs root URL:** `http://localhost:3000/api/v1`
+- **Swagger Documentation:** `http://localhost:3000/api/docs`
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## Available Phase 1 Endpoints
 
-Check out a few resources that may come in handy when working with NestJS:
+### 🔐 Authentication (`/api/v1/auth`)
+- `POST /auth/register` - Create Driver/Host account
+- `POST /auth/login` - Local sign-in (locks account after 5 failures)
+- `POST /auth/logout` - Invalidate active session
+- `POST /auth/refresh` - Refresh access tokens
+- `POST /auth/verify-email` - Check OTP token (using Redis backend)
+- `POST /auth/forgot-password` - Request verification link
+- `POST /auth/reset-password` - Reset account password
+- `POST /auth/change-password` - Update password (authenticated users)
+- `GET /auth/google` - Redirect to Google consent screen
+- `GET /auth/google/callback` - Receive token from Google callback
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### 👤 Profile Management (`/api/v1/users`)
+- `GET /users/me` - Fetch own profile details
+- `PATCH /users/me` - Update name, phone, bio, avatar
+- `POST /users/me/avatar` - Upload avatar file (scaffolded to upload stub)
+- `DELETE /users/me/deactivate` - Soft-deactivate own account
+- `DELETE /users/me` - Hard-delete account (requires password verification)
 
-## Support
+### ⚙️ Admin APIs (`/api/v1/admin/users`)
+- `GET /admin/users` - Search, filter, and page through users (ADMIN role required)
+- `GET /admin/users/:id` - Fetch user by UUID
+- `PATCH /admin/users/:id/suspend` - Lock a user account for 30 days
+- `PATCH /admin/users/:id/activate` - Remove lock status
+- `DELETE /admin/users/:id` - Soft-delete user account
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## Running Tests
+To execute all Unit Tests:
+```bash
+npm run test -- --forceExit
+```
+To run tests matching specific services:
+```bash
+npm run test -- --testPathPatterns="auth.service|users.service" --forceExit
+```
